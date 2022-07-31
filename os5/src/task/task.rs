@@ -14,7 +14,6 @@ use core::cell::RefMut;
 /// Task control block structure
 ///
 /// Directly save the contents that will not change during running
-
 pub struct TaskControlBlock {
     // immutable
     /// Process identifier
@@ -29,7 +28,6 @@ pub struct TaskControlBlock {
 ///
 /// Store the contents that will change during operation
 /// and are wrapped by UPSafeCell to provide mutual exclusion
-
 pub struct TaskControlBlockInner {
     pub trap_cx_ppn: PhysPageNum,
     pub base_size: usize,
@@ -42,7 +40,7 @@ pub struct TaskControlBlockInner {
     pub syscall_times: [u32; MAX_SYSCALL_NUM],
     pub start_time: usize,
     pub task_priority: usize,                          
-    pub task_stride: usize,                                
+    pub task_stride: usize,                             
 }
 
 /// Simple access to its internal fields
@@ -172,10 +170,10 @@ impl TaskControlBlock {
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),
                     exit_code: 0,
-                    syscall_times:parent_inner.syscall_times,
-                    task_stride:parent_inner.task_stride,
-                    start_time:parent_inner.start_time,
-                    task_priority:parent_inner.task_priority
+                    syscall_times: parent_inner.syscall_times,
+                    start_time: parent_inner.start_time,
+                    task_priority: parent_inner.task_priority,
+                    task_stride: parent_inner.task_stride,
                 })
             },
         });

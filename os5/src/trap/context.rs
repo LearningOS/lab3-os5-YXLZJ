@@ -18,6 +18,7 @@ pub struct TrapContext {
     /// Virtual address of trap handler entry point in kernel
     pub trap_handler: usize,
 }
+
 impl TrapContext {
     pub fn set_sp(&mut self, sp: usize) {
         self.x[2] = sp;

@@ -1,17 +1,23 @@
+//! Task pid implementation.
+//!
+//! Assign PID to the process here. At the same time, the position of the application KernelStack
+//! is determined according to the PID.
+
 use crate::config::{KERNEL_STACK_SIZE, PAGE_SIZE, TRAMPOLINE};
 use crate::mm::{MapPermission, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
 use alloc::vec::Vec;
 use lazy_static::*;
 
-pub struct PidHandle(pub usize);
-
+/// Process identifier allocator using stack allocation
 struct PidAllocator {
+    /// A new PID to be assigned
     current: usize,
+    /// Recycled PID sequence
     recycled: Vec<usize>,
 }
 
-impl PidAllocator{
+impl PidAllocator {
     pub fn new() -> Self {
         PidAllocator {
             current: 0,
@@ -29,21 +35,22 @@ impl PidAllocator{
     pub fn dealloc(&mut self, pid: usize) {
         assert!(pid < self.current);
         assert!(
-            self.recycled.iter().find(|ppid| **ppid == pid).is_none(),
-            "pid {} has been deallocated!", pid
+            !self.recycled.iter().any(|ppid| *ppid == pid),
+            "pid {} has been deallocated!",
+            pid
         );
         self.recycled.push(pid);
     }
 }
 
 lazy_static! {
+    /// Pid allocator instance through lazy_static!
     static ref PID_ALLOCATOR: UPSafeCell<PidAllocator> =
         unsafe { UPSafeCell::new(PidAllocator::new()) };
 }
 
-pub fn pid_alloc() -> PidHandle {
-    PID_ALLOCATOR.exclusive_access().alloc()
-}
+/// Abstract structure of PID
+pub struct PidHandle(pub usize);
 
 impl Drop for PidHandle {
     fn drop(&mut self) {
@@ -52,12 +59,18 @@ impl Drop for PidHandle {
     }
 }
 
-pub fn kernel_stack_position(add_id:usize) ->(usize,usize){
-    let top = TRAMPOLINE - add_id * (KERNEL_STACK_SIZE + PAGE_SIZE);
+pub fn pid_alloc() -> PidHandle {
+    PID_ALLOCATOR.exclusive_access().alloc()
+}
+
+/// Return (bottom, top) of a kernel stack in kernel space.
+pub fn kernel_stack_position(app_id: usize) -> (usize, usize) {
+    let top = TRAMPOLINE - app_id * (KERNEL_STACK_SIZE + PAGE_SIZE);
     let bottom = top - KERNEL_STACK_SIZE;
     (bottom, top)
 }
-#[derive(Clone)]
+
+/// KernelStack corresponding to PID
 pub struct KernelStack {
     pid: usize,
 }

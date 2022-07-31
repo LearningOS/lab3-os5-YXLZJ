@@ -1,8 +1,19 @@
+//! Implementation of [`Processor`] and Intersection of control flow
+//!
+//! Here, the continuous operation of user apps in CPU is maintained,
+//! the current running state of CPU is recorded,
+//! and the replacement and transfer of control flow of different applications are executed.
+
+
+
+
 use super::__switch;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
 use crate::config::MAX_SYSCALL_NUM;
+use crate::mm::VirtAddr;
 use crate::sync::UPSafeCell;
+use crate::syscall;
 use crate::timer::get_time_us;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
@@ -31,6 +42,42 @@ impl Processor {
     }
     pub fn current(&self) -> Option<Arc<TaskControlBlock>> {
         self.current.as_ref().map(|task| Arc::clone(task))
+    }
+    pub fn get_current_status(&mut self) ->TaskStatus{
+        let pcb = self.current().unwrap();
+        let inner=pcb.inner_exclusive_access();
+        inner.task_status
+    }
+    pub fn set_task_priority(&mut self,prio:usize){
+        let pcb = self.current().unwrap();
+        let mut inner = pcb.inner_exclusive_access();
+        inner.task_priority = prio;
+    }
+    pub fn get_already_time(&mut self)->usize{
+        let now = get_time_us();
+        let pcb = self.current().unwrap();
+        let inner = pcb.inner_exclusive_access();
+        now - inner.start_time
+    }
+    pub fn get_syscall_times(&mut self)->[u32;MAX_SYSCALL_NUM]{
+        let pcb = self.current().unwrap();
+        let inner = pcb.inner_exclusive_access();
+        inner.syscall_times
+    }
+    pub fn syscall_add(&mut self,syscall_id:usize){
+        let pcb = self.current().unwrap();
+        let mut inner =pcb.inner_exclusive_access();
+        inner.syscall_times[syscall_id]+=1
+    }
+    pub fn mmap(&mut self,_start:usize,_len:usize,_port:usize)->isize{
+        let pcb = self.current().unwrap();
+        let mut inner =pcb.inner_exclusive_access();
+        inner.memory_set.mmap(_start, _len, _port)
+    }
+    pub fn munmap(&mut self,_start:usize,_len:usize)->isize{
+        let pcb = self.current().unwrap();
+        let mut inner =pcb.inner_exclusive_access();
+        inner.memory_set.munmap(_start, _len)
     }
 }
 
@@ -99,44 +146,37 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     }
 }
 
-pub fn set_task_priority(prio:usize){
-    let now = current_task().unwrap();
-    let mut inner = now.inner_exclusive_access();
-    inner.task_priority = prio;
-}
-
 pub fn get_current_status()->TaskStatus{
-    let now = current_task().unwrap();
-    let mut inner = now.inner_exclusive_access();
-    inner.task_status
+    let mut processor = PROCESSOR.exclusive_access();
+    processor.get_current_status()
 }
 
-pub fn get_already_run_time() ->usize{
-    let now = current_task().unwrap();
-    let mut inner = now.inner_exclusive_access();
-    get_time_us()-inner.start_time
+pub fn set_task_priority(prio:usize){
+    let mut processor = PROCESSOR.exclusive_access();
+    processor.set_task_priority(prio)
 }
 
-pub fn get_syscall_times() ->[u32;MAX_SYSCALL_NUM]{
-    let now = current_task().unwrap();
-    let mut inner = now.inner_exclusive_access();
-    inner.syscall_times
+pub fn get_already_time()->usize{
+    let mut processor = PROCESSOR.exclusive_access();
+    processor.get_already_time()
 }
 
-pub fn add_syscall_times(id:usize){
-    let now = current_task().unwrap();
-    let mut inner = now.inner_exclusive_access();
-    inner.syscall_times[id]+=1
+pub fn syscall_add(syscall_id:usize){
+    let mut processor = PROCESSOR.exclusive_access();
+    processor.syscall_add(syscall_id)
 }
 
-pub fn mmap(_start:usize, _len:usize, _port:usize)->isize{
-    let now = current_task().unwrap();
-    let mut inner = now.inner_exclusive_access();
-    inner.memory_set.mmap(_start, _len, _port)
+pub fn get_syscall_times()->[u32;MAX_SYSCALL_NUM]{
+    let mut processor = PROCESSOR.exclusive_access();
+    processor.get_syscall_times()
+}
+
+pub fn mmap(_start:usize,_len:usize,_port:usize)->isize{
+    let mut processor = PROCESSOR.exclusive_access();
+    processor.mmap(_start, _len, _port)
 }
 
 pub fn munmap(_start:usize,_len:usize)->isize{
-    let now = current_task().unwrap();
-    let mut inner = now.inner_exclusive_access();
-    inner.memory_set.munmap(_start,_len)
+    let mut processor = PROCESSOR.exclusive_access();
+    processor.munmap(_start, _len)
 }

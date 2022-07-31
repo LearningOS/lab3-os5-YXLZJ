@@ -1,12 +1,23 @@
+//! Implementation of process management mechanism
+//!
+//! Here is the entry for process scheduling required by other modules
+//! (such as syscall or clock interrupt).
+//! By suspending or exiting the current process, you can
+//! modify the process state, manage the process queue through TASK_MANAGER,
+//! and switch the control flow through PROCESSOR.
+//!
+//! Be careful when you see [`__switch`]. Control flow around this function
+//! might not be what you expect.
+
 mod context;
 mod manager;
 mod pid;
-pub mod processor;
+mod processor;
 mod switch;
 #[allow(clippy::module_inception)]
-pub(crate) mod task;
+mod task;
 
-use crate::{loader::get_app_data_by_name, config::BIG_STRIDE};
+use crate::loader::get_app_data_by_name;
 use alloc::sync::Arc;
 use lazy_static::*;
 use manager::fetch_task;
@@ -16,10 +27,12 @@ pub use task::{TaskControlBlock, TaskStatus};
 pub use context::TaskContext;
 pub use manager::add_task;
 pub use pid::{pid_alloc, KernelStack, PidHandle};
+pub use processor::{
+    current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,get_current_status,set_task_priority,
+    get_already_time,syscall_add,get_syscall_times,mmap,munmap
 
-pub use self::processor::*;
-
-
+};
+use crate::config::BIG_STRIDE;
 
 /// Make current task suspended and switch to the next task
 pub fn suspend_current_and_run_next() {
@@ -31,9 +44,10 @@ pub fn suspend_current_and_run_next() {
     let task_cx_ptr = &mut task_inner.task_cx as *mut TaskContext;
     // Change status to Ready
     task_inner.task_status = TaskStatus::Ready;
-    task_inner.task_stride = task_inner.task_stride + BIG_STRIDE;
+    task_inner.task_stride = task_inner.task_stride + BIG_STRIDE / task_inner.task_priority;
     drop(task_inner);
     // ---- release current PCB
+
     // push back to ready queue.
     add_task(task);
     // jump to scheduling cycle
